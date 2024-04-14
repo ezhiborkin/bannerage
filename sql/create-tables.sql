@@ -20,14 +20,12 @@ CREATE TABLE banner_revisions (
      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Создание внешнего ключа для banner_id
 ALTER TABLE banner_revisions
 ADD CONSTRAINT fk_banner_id
 FOREIGN KEY (banner_id)
 REFERENCES banners(banner_id)
 ON DELETE CASCADE;
 
--- Создание внешнего ключа для revision_id
 ALTER TABLE banners
 ADD CONSTRAINT fk_chosen_revision_revision_id
 FOREIGN KEY (chosen_revision_id)
@@ -39,3 +37,11 @@ CREATE TABLE revision_tags (
    tag_id INT NOT NULL,
    PRIMARY KEY (revision_id, tag_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_banners_chosen_revision_id ON banners(chosen_revision_id);
+
+CREATE INDEX IF NOT EXISTS idx_banner_revisions_banner_id_revision_id ON banner_revisions(banner_id, revision_id);
+
+CREATE INDEX IF NOT EXISTS idx_banner_revisions_feature ON banner_revisions(feature_id);
+
+CREATE INDEX IF NOT EXISTS idx_banner_revisions_tags ON revision_tags(tag_id);

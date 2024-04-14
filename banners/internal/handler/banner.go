@@ -557,7 +557,7 @@ func (h *Handler) deleteBannerFeatureTag(deleteCtx context.Context) http.Handler
 		}
 
 		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusAccepted)
 		_, err = w.Write([]byte(fmt.Sprintf("deleted banner with featureID: %d, tagID: %d, OR NOT)))", featureID, tagID)))
 		if err != nil {
 			log.Error("failed to delete banner", sl.Err(err))
