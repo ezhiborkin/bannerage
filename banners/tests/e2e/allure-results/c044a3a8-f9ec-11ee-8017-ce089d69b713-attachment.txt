@@ -1,2 +1,0 @@
-on path $[0].email. expect Eliseo@gardener.biz, but actual Eliseo@gardner.biz
-Called from: /Users/evgeny/avito/banners/tests/e2e/e2e_test.go:69
