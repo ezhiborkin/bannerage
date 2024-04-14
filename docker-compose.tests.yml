@@ -1,0 +1,57 @@
+version: '3'
+
+services:
+  db:
+    restart: always
+    image: postgres:latest
+    container_name: bannerage-postgres-e2e
+    volumes:
+#      - ./postgres-data:/var/lib/postgresql/data
+      - ./sql/create-tables.sql:/docker-entrypoint-initdb.d/create-tables.sql
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=qwerty
+    ports:
+      - 5435:5432
+
+  redis:
+    image: "redis:latest"
+    container_name: bannerage-redis-e2e
+    ports:
+      - 6379:6379
+
+  bannerage:
+    container_name: bannerage-e2e
+    build:
+      context: ./banners
+      dockerfile: Dockerfile
+    command: >
+      sh -c "while ! ./wait-for-postgres.sh db ./banners -- echo 'PostgreSQL started'; do sleep 1; done && go run cmd/banners/main.go"
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=qwerty
+      - CONFIG_PATH=./config/local.yaml
+    ports:
+      - 8080:8080
+
+  e2e:
+    build:
+      context: ./banners
+      dockerfile: DockerfileTest
+    depends_on:
+      - bannerage
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=qwerty
+    command: >
+      sh -c "while ! ./wait-for-postgres.sh db -- echo 'PostgreSQL started'; do sleep 1; done && go test -tags e2e ./... -count=1"
+#      ["go", "test", "-tags", "e2e", "./...", "-count=1"]

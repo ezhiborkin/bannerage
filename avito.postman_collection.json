@@ -1,0 +1,338 @@
+{
+	"info": {
+		"_postman_id": "27cc056b-2fc6-45dd-99cc-69cba807b320",
+		"name": "avito",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "27061529"
+	},
+	"item": [
+		{
+			"name": "create user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// pm.environment.set(\"TOKEN\", pm.response.headers.get(\"authorization\"))"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"33kjdkjj123kk23@al.ru\",\n    \"password\":\"opopop111\",\n    \"role\":\"user\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/create/user",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"create",
+						"user"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.environment.set(\"TOKEN\", pm.response.headers.get(\"authorization\"))"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"33kjdkjj123kk2@al.ru\",\n    \"password\":\"opopop111\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/login",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create banner",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"feature_id\":99,                                \n    \"tag_ids\":[28],\n    \"content\": {\"title\": \"hueta\", \"text\": \"some_text\", \"url\": \"some_url\"},\n    \"is_active\":true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/banner",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get user banner",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:8080/user_banner?tag_id=4&feature_id=3&use_last_revision=false",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"user_banner"
+					],
+					"query": [
+						{
+							"key": "tag_id",
+							"value": "4"
+						},
+						{
+							"key": "feature_id",
+							"value": "3"
+						},
+						{
+							"key": "use_last_revision",
+							"value": "false"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "choose banner revision",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/choose_revision?banner_id=35&revision_id=2",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"choose_revision"
+					],
+					"query": [
+						{
+							"key": "banner_id",
+							"value": "35"
+						},
+						{
+							"key": "revision_id",
+							"value": "2"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get revisions of a banner",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:8080/banner_revisions/35",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner_revisions",
+						"35"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delete banner",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:8080/banner/106",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner",
+						"106"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get banner by feature and tag",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:8080/banner?feature_id=3&tag_id=6",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner"
+					],
+					"query": [
+						{
+							"key": "feature_id",
+							"value": "3"
+						},
+						{
+							"key": "tag_id",
+							"value": "6"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "patch banner",
+			"request": {
+				"method": "PATCH",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"feature_id\":12,\n    \"is_active\":true,\n    \"content\": {\"huy\":\"zhopich\"},\n    \"tag_ids\": [1,2,3,4,5,6,7]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/banner/35",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner",
+						"35"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delete banner by feature and tag ",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:8080/banner_deferred?tag_id=28&feature_id=99",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"banner_deferred"
+					],
+					"query": [
+						{
+							"key": "tag_id",
+							"value": "28"
+						},
+						{
+							"key": "feature_id",
+							"value": "99"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

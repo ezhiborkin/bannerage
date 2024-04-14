@@ -69,8 +69,8 @@ func (s *Storage) PostBannerStorage(ctx context.Context, banner *models.Banner) 
 	}
 
 	bannerRevInsert := sq.Insert("banner_revisions").
-		Columns("banner_id", "feature_id", "content").
-		Values(bannerID, banner.FeatureID, banner.Content).
+		Columns("banner_id", "feature_id", "content", "is_active").
+		Values(bannerID, banner.FeatureID, banner.Content, banner.IsActive).
 		Suffix("RETURNING revision_id")
 
 	var revisionID int
@@ -181,26 +181,7 @@ func (s *Storage) ListRevisionsStorage(ctx context.Context, bannerID int, limit 
 
 func (s *Storage) ListBannersStorage(ctx context.Context, featureID int, tagID int, limit int, offset int) (*[]models.Banner, error) {
 	const op = "storage.postgresql.ListBannersStorage"
-	//subQuery := sq.Select("br.revision_id").
-	//	From("banners b").
-	//	Join("banner_revisions br ON b.chosen_revision_id = br.revision_id").
-	//	Where(sq.Eq{"br.feature_id": featureID}).
-	//	Where("br.revision_id = b.chosen_revision_id").
-	//	GroupBy("br.revision_id").
-	//	PlaceholderFormat(sq.Dollar)
-	//
-	//mainQuery, args, err := sq.
-	//	Select("b.banner_id", "br.feature_id", "br.is_active", "br.created_at", "br.updated_at", "br.revision_id", "br.content", "ARRAY_TO_STRING(ARRAY_AGG(rt.tag_id), ', ') AS tag_ids").
-	//	From("banners b").
-	//	Join("banner_revisions br ON b.chosen_revision_id = br.revision_id").
-	//	Join("revision_tags rt ON br.revision_id = rt.revision_id").
-	//	Where(sq.Expr("br.revision_id IN (?)", subQuery)).
-	//	Where(sq.Eq{"rt.tag_id": tagID}).
-	//	GroupBy("b.banner_id", "br.feature_id", "br.is_active", "br.created_at", "br.updated_at", "br.revision_id", "br.content").
-	//	Offset(uint64(offset)).
-	//	Limit(uint64(limit)).
-	//	PlaceholderFormat(sq.Dollar).
-	//	ToSql()
+
 	query, args, err := sq.Select("b.banner_id", "br.feature_id", "br.is_active", "br.created_at", "br.updated_at", "br.revision_id", "br.content", "ARRAY_TO_STRING(ARRAY_AGG(rt.tag_id), ', ') AS tag_ids").
 		From("banners b").
 		Join("banner_revisions br ON b.chosen_revision_id = br.revision_id").
@@ -253,6 +234,84 @@ func (s *Storage) ListBannersStorage(ctx context.Context, featureID int, tagID i
 	return &banners, nil
 }
 
+//func (s *Storage) PatchBannerStorage(ctx context.Context, banner *models.Banner) error {
+//	const op = "storage.postgresql.PatchBannerStorage"
+//
+//	tx, err := s.db.BeginTx(ctx, nil)
+//	if err != nil {
+//		return fmt.Errorf("%s: %w", op, err)
+//	}
+//	defer func() {
+//		if err != nil {
+//			tx.Rollback()
+//		} else {
+//			err = tx.Commit()
+//		}
+//	}()
+//
+//	subQuery := sq.Select("chosen_revision_id").
+//		From("banners").
+//		Where(sq.Eq{"banner_id": banner.BannerID}).
+//		Limit(1)
+//
+//	var chosenRevisionID int
+//	err = subQuery.RunWith(tx).PlaceholderFormat(sq.Dollar).QueryRowContext(ctx).Scan(&chosenRevisionID)
+//	if err != nil {
+//		return fmt.Errorf("%s: %w", op, err)
+//	}
+//
+//	updateBuilder := sq.Update("banner_revisions").
+//		Where(sq.Eq{"revision_id": chosenRevisionID}).
+//		Set("is_active", banner.IsActive)
+//
+//	if banner.FeatureID != 0 {
+//		updateBuilder = updateBuilder.Set("feature_id", banner.FeatureID)
+//	}
+//
+//	if banner.Content != nil {
+//		updateBuilder = updateBuilder.Set("content", banner.Content)
+//	}
+//
+//	if len(banner.TagIDs) != 0 {
+//		query, args, err := sq.Delete("revision_tags").
+//			Where(sq.Eq{"revision_id": chosenRevisionID}).
+//			PlaceholderFormat(sq.Dollar).
+//			ToSql()
+//		if err != nil {
+//			return fmt.Errorf("%s: %w", op, err)
+//		}
+//
+//		_, err = tx.ExecContext(ctx, query, args...)
+//		if err != nil {
+//			return fmt.Errorf("%s: %w", op, err)
+//		}
+//
+//		bannerTagsInsert := sq.Insert("revision_tags").
+//			Columns("revision_id", "tag_id")
+//
+//		for _, tagID := range banner.TagIDs {
+//			bannerTagsInsert = bannerTagsInsert.Values(chosenRevisionID, tagID)
+//		}
+//
+//		_, err = bannerTagsInsert.RunWith(tx).PlaceholderFormat(sq.Dollar).ExecContext(ctx)
+//		if err != nil {
+//			return fmt.Errorf("%s: %w", op, err)
+//		}
+//	}
+//
+//	query, args, err := updateBuilder.PlaceholderFormat(sq.Dollar).ToSql()
+//	if err != nil {
+//		return fmt.Errorf("%s: %w", op, err)
+//	}
+//
+//	_, err = tx.ExecContext(ctx, query, args...)
+//	if err != nil {
+//		return fmt.Errorf("%s: %w", op, err)
+//	}
+//
+//	return nil
+//}
+
 func (s *Storage) PatchBannerStorage(ctx context.Context, banner *models.Banner) error {
 	const op = "storage.postgresql.PatchBannerStorage"
 
@@ -268,34 +327,31 @@ func (s *Storage) PatchBannerStorage(ctx context.Context, banner *models.Banner)
 		}
 	}()
 
-	subQuery := sq.Select("chosen_revision_id").
-		From("banners").
-		Where(sq.Eq{"banner_id": banner.BannerID}).
-		Limit(1)
-
-	var chosenRevisionID int
-	err = subQuery.RunWith(tx).PlaceholderFormat(sq.Dollar).QueryRowContext(ctx).Scan(&chosenRevisionID)
+	// 1. Insert a new revision into banner_revisions
+	var newRevisionID int
+	insertBuilder := sq.Insert("banner_revisions").
+		Columns("banner_id", "is_active", "feature_id", "content").
+		Values(banner.BannerID, banner.IsActive, banner.FeatureID, banner.Content).
+		Suffix("RETURNING revision_id") // Retrieve the generated revision_id
+	query, args, err := insertBuilder.PlaceholderFormat(sq.Dollar).ToSql()
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	err = tx.QueryRowContext(ctx, query, args...).Scan(&newRevisionID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	updateBuilder := sq.Update("banner_revisions").
-		Where(sq.Eq{"revision_id": chosenRevisionID}).
-		Set("is_active", banner.IsActive)
-
-	if banner.FeatureID != 0 {
-		updateBuilder = updateBuilder.Set("feature_id", banner.FeatureID)
-	}
-
-	if banner.Content != nil {
-		updateBuilder = updateBuilder.Set("content", banner.Content)
-	}
-
+	// 2. Insert into revision_tags
 	if len(banner.TagIDs) != 0 {
-		query, args, err := sq.Delete("revision_tags").
-			Where(sq.Eq{"revision_id": chosenRevisionID}).
-			PlaceholderFormat(sq.Dollar).
-			ToSql()
+		bannerTagsInsert := sq.Insert("revision_tags").
+			Columns("revision_id", "tag_id")
+
+		for _, tagID := range banner.TagIDs {
+			bannerTagsInsert = bannerTagsInsert.Values(newRevisionID, tagID)
+		}
+
+		query, args, err := bannerTagsInsert.PlaceholderFormat(sq.Dollar).ToSql()
 		if err != nil {
 			return fmt.Errorf("%s: %w", op, err)
 		}
@@ -304,25 +360,16 @@ func (s *Storage) PatchBannerStorage(ctx context.Context, banner *models.Banner)
 		if err != nil {
 			return fmt.Errorf("%s: %w", op, err)
 		}
-
-		bannerTagsInsert := sq.Insert("revision_tags").
-			Columns("revision_id", "tag_id")
-
-		for _, tagID := range banner.TagIDs {
-			bannerTagsInsert = bannerTagsInsert.Values(chosenRevisionID, tagID)
-		}
-
-		_, err = bannerTagsInsert.RunWith(tx).PlaceholderFormat(sq.Dollar).ExecContext(ctx)
-		if err != nil {
-			return fmt.Errorf("%s: %w", op, err)
-		}
 	}
 
-	query, args, err := updateBuilder.PlaceholderFormat(sq.Dollar).ToSql()
+	// 3. Update the banners table to reference the new revision
+	updateBuilder := sq.Update("banners").
+		Set("chosen_revision_id", newRevisionID).
+		Where(sq.Eq{"banner_id": banner.BannerID})
+	query, args, err = updateBuilder.PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
-
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)

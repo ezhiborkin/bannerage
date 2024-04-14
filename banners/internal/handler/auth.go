@@ -2,6 +2,7 @@ package handler
 
 import (
 	"banners/domain/models"
+	"banners/internal/errorwriter"
 	"banners/lib/logger/sl"
 	"encoding/json"
 	"errors"
@@ -28,17 +29,18 @@ func (h *Handler) loginUser(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(user)
 	if err != nil {
 		log.Error("failed to decode request body", sl.Err(err))
-		http.Error(w, "failed to decode request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to decode request", http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, io.EOF) {
 		log.Error("request body is empty", sl.Err(err))
-		http.Error(w, "empty request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "request body is empty", http.StatusBadRequest)
 		return
 	}
+
 	if user.Email == "" || user.Password == "" {
-		log.Error("email or password is empty", sl.Err(err))
-		http.Error(w, "email or password is empty", http.StatusBadRequest)
+		log.Error("email or password is empty")
+		errorwriter.WriteError(w, "email or password is empty", http.StatusBadRequest)
 		return
 	}
 
@@ -47,7 +49,7 @@ func (h *Handler) loginUser(w http.ResponseWriter, r *http.Request) {
 	tokenString, err := h.authProvider.LoginUser(user.Email, user.Password)
 	if err != nil {
 		log.Error("failed to login user", sl.Err(err))
-		http.Error(w, "failed to login user", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to login user", http.StatusBadRequest)
 		return
 	}
 
@@ -58,7 +60,7 @@ func (h *Handler) loginUser(w http.ResponseWriter, r *http.Request) {
 
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to marshal response", http.StatusInternalServerError)
 		return
 	}
 

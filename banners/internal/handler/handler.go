@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"banners/internal/errorwriter"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"log/slog"
@@ -135,9 +137,12 @@ func adminMiddleware(next http.Handler) http.HandlerFunc {
 }
 
 func handleUnauthorized(w http.ResponseWriter, message string) {
-	fmt.Println(message)
 	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte(message))
+	w.Header().Add("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(errorwriter.JSONError{Error: message})
+	if err != nil {
+		fmt.Printf("%s", err)
+	}
 }
 
 func extractTokenString(authHeader string) string {

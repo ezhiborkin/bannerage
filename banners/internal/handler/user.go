@@ -2,6 +2,7 @@ package handler
 
 import (
 	"banners/domain/models"
+	"banners/internal/errorwriter"
 	"banners/lib/logger/sl"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 )
+
+type CreateUserResponse struct {
+	Message string `json:"message"`
+	Email   string `json:"email"`
+}
 
 type UserProvider interface {
 	CreateUser(email, role, password string) error
@@ -23,12 +29,12 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(user)
 	if err != nil {
 		log.Error("failed to decode request body", sl.Err(err))
-		http.Error(w, "failed to decode request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to decode request", http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, io.EOF) {
 		log.Error("request body is empty", sl.Err(err))
-		http.Error(w, "empty request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "empty request", http.StatusBadRequest)
 		return
 	}
 
@@ -36,27 +42,41 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 
 	if user.Email == "" {
 		h.log.Error("email is empty")
-		http.Error(w, "email is empty", http.StatusBadRequest)
+		errorwriter.WriteError(w, "email is empty", http.StatusBadRequest)
 		return
 	}
 	if user.Role == "" {
 		h.log.Error("role is empty")
-		http.Error(w, "role is empty", http.StatusBadRequest)
+		errorwriter.WriteError(w, "role is empty", http.StatusBadRequest)
+
 		return
 	}
 	if user.Password == "" {
 		h.log.Error("password is empty")
-		http.Error(w, "password is empty", http.StatusBadRequest)
+		errorwriter.WriteError(w, "password is empty", http.StatusBadRequest)
 		return
 	}
 
 	err = h.userProvider.CreateUser(user.Email, user.Role, user.Password)
 	if err != nil {
 		log.Error("failed to create user", sl.Err(err))
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to create user", http.StatusConflict)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Created user with email - " + user.Email))
+	response := CreateUserResponse{
+		Message: "Successfully created user.",
+		Email:   user.Email,
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Error("failed to marshal response", sl.Err(err))
+		errorwriter.WriteError(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(responseJSON)
 }

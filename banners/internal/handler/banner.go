@@ -2,6 +2,7 @@ package handler
 
 import (
 	"banners/domain/models"
+	"banners/internal/errorwriter"
 	"banners/internal/storage"
 	"banners/lib/logger/sl"
 	"context"
@@ -43,18 +44,18 @@ func (h *Handler) postBanner(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&bannerReq)
 	if err != nil {
 		log.Error("failed to decode request body", sl.Err(err))
-		http.Error(w, "failed to decode request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to decode request", http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, io.EOF) {
 		log.Error("request body is empty", sl.Err(err))
-		http.Error(w, "empty request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "empty request", http.StatusBadRequest)
 		return
 	}
 
 	if bannerReq.Content == nil || bannerReq.FeatureID == nil || bannerReq.IsActive == nil || bannerReq.TagIDs == nil {
 		log.Error("failed to create banner: missing required fields in request body")
-		http.Error(w, "failed to create banner: missing required fields in request body", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to create banner: missing required fields in request body", http.StatusBadRequest)
 		return
 	}
 
@@ -66,21 +67,37 @@ func (h *Handler) postBanner(w http.ResponseWriter, r *http.Request) {
 		Content:   bannerReq.Content,
 		IsActive:  *bannerReq.IsActive,
 	}
+
 	bannerID, err := h.bannerProvider.PostBanner(r.Context(), banner)
 	if err != nil {
 		log.Error("failed to create banner", sl.Err(err))
-		http.Error(w, "failed to create banner", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to create banner", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write([]byte(strconv.Itoa(bannerID)))
-	if err != nil {
-		log.Error("failed to create banner", sl.Err(err))
-		http.Error(w, "failed to create banner", http.StatusInternalServerError)
+	type postUserBanner struct {
+		Message  string `json:"message"`
+		BannerID int    `json:"banner_id"`
 	}
 
+	response := postUserBanner{
+		Message:  "Successfully created banner.",
+		BannerID: bannerID,
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		errorwriter.WriteError(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(responseJSON)
+	if err != nil {
+		log.Error("failed to create banner", sl.Err(err))
+		errorwriter.WriteError(w, "failed to create banner", http.StatusInternalServerError)
+	}
 }
 
 func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
@@ -94,21 +111,21 @@ func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
 
 	if tagIDStr == "" || featureIDStr == "" {
 		log.Error("tagID or featureID is not provided")
-		http.Error(w, "tagID or featureID is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "tagID or featureID is not provided", http.StatusBadRequest)
 		return
 	}
 
 	tagID, err := strconv.Atoi(tagIDStr)
 	if err != nil {
 		log.Error("tagID is not a number", sl.Err(err))
-		http.Error(w, "tagID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "tagID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	featureID, err := strconv.Atoi(featureIDStr)
 	if err != nil {
 		log.Error("featureID is not a number", sl.Err(err))
-		http.Error(w, "featureID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "featureID is not a number", http.StatusBadRequest)
 		return
 	}
 
@@ -119,7 +136,7 @@ func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
 		useLastRev, err = strconv.ParseBool(useLastRevStr)
 		if err != nil {
 			log.Error("useLastRev is not a bool", sl.Err(err))
-			http.Error(w, "useLastRev is not a bool", http.StatusBadRequest)
+			errorwriter.WriteError(w, "useLastRev is not a bool", http.StatusBadRequest)
 			return
 		}
 	}
@@ -129,32 +146,27 @@ func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
 		banner, err = h.bannerProvider.GetUserBannerCache(r.Context(), tagID, featureID)
 		if err != nil {
 			log.Error("failed to get banner", sl.Err(err))
-			http.Error(w, "failed to get banner", http.StatusInternalServerError)
+			errorwriter.WriteError(w, "failed to get banner", http.StatusNotFound)
 			return
 		}
-
-		fmt.Println("used not last revision")
-
 	} else {
 		banner, err = h.bannerProvider.GetUserBanner(r.Context(), tagID, featureID)
 		if errors.Is(err, storage.ErrBannerNotFound) {
-			log.Info("banner not found")
-			w.WriteHeader(http.StatusNotFound)
+			log.Info("banner not found", sl.Err(err))
+			errorwriter.WriteError(w, "banner not found", http.StatusNotFound)
 			return
 		}
 		if err != nil {
 			log.Error("failed to get banner", sl.Err(err))
-			http.Error(w, "failed to get banner", http.StatusInternalServerError)
+			errorwriter.WriteError(w, "failed to get banner", http.StatusNotFound)
 			return
 		}
-
-		fmt.Println("used last revision")
 	}
 
 	if banner.IsActive == false {
 		if r.Context().Value("role") != "admin" {
-			log.Error("you are not admin", sl.Err(err))
-			http.Error(w, "you are not admin", http.StatusUnauthorized)
+			log.Error("you are not admin")
+			errorwriter.WriteError(w, "you are not admin", http.StatusUnauthorized)
 			return
 		}
 	}
@@ -169,7 +181,7 @@ func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
 
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to marshal response", http.StatusInternalServerError)
 		return
 	}
 
@@ -178,7 +190,7 @@ func (h *Handler) getUserBanner(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(responseJSON)
 	if err != nil {
 		log.Error("failed to get banner", sl.Err(err))
-		http.Error(w, "failed to get banner", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to get banner", http.StatusInternalServerError)
 	}
 
 }
@@ -193,42 +205,60 @@ func (h *Handler) chooseBanner(w http.ResponseWriter, r *http.Request) {
 
 	if bannerIDStr == "" || revisionIDStr == "" {
 		log.Error("bannerID or revisionID is not provided")
-		http.Error(w, "bannerID or revisionID is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID or revisionID is not provided", http.StatusBadRequest)
 		return
 	}
 
 	bannerID, err := strconv.Atoi(bannerIDStr)
 	if err != nil {
 		log.Error("bannerID is not a number", sl.Err(err))
-		http.Error(w, "bannerID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	revisionID, err := strconv.Atoi(revisionIDStr)
 	if err != nil {
 		log.Error("revisionID is not a number", sl.Err(err))
-		http.Error(w, "revisionID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "revisionID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	err = h.bannerProvider.ChooseRevision(r.Context(), bannerID, revisionID)
 	if errors.Is(err, storage.ErrFailedRevisionChange) {
-		log.Info("failed to choose a revision")
-		w.WriteHeader(http.StatusBadRequest)
+		log.Info("failed to choose a revision", sl.Err(err))
+		errorwriter.WriteError(w, "failed to choose a revision", http.StatusBadRequest)
 		return
 	}
 	if err != nil {
 		log.Error("failed to choose a version", sl.Err(err))
-		http.Error(w, "failed to choose a version", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to choose a version", http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write([]byte(fmt.Sprintf("chosen revision: %v for a bannerID: %v", revisionID, bannerID)))
+	type chooseBanner struct {
+		Message    string `json:"message"`
+		BannerID   int    `json:"banner_id"`
+		RevisionID int    `json:"revision_id"`
+	}
+
+	response := chooseBanner{
+		Message:    "Successfully chosen a revision",
+		RevisionID: revisionID,
+		BannerID:   bannerID,
+	}
+
+	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Error("failed to choose a revision", sl.Err(err))
-		http.Error(w, "failed to choose a revision", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(responseJSON)
+	if err != nil {
+		log.Error("failed to choose revision", sl.Err(err))
+		errorwriter.WriteError(w, "failed to choose revision", http.StatusInternalServerError)
 	}
 }
 
@@ -252,51 +282,52 @@ func (h *Handler) listRevisions(w http.ResponseWriter, r *http.Request) {
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil {
 		log.Error("limit is not a number", sl.Err(err))
-		http.Error(w, "limit is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "limit is not a number", http.StatusBadRequest)
 		return
 	}
 
 	offset, err := strconv.Atoi(offsetStr)
 	if err != nil {
 		log.Error("offset is not a number", sl.Err(err))
-		http.Error(w, "offset is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "offset is not a number", http.StatusBadRequest)
 		return
 	}
 
 	if bannerIDStr == "" {
 		log.Error("bannerID  is not provided")
-		http.Error(w, "bannerID  is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID  is not provided", http.StatusBadRequest)
 		return
 	}
 
 	bannerID, err := strconv.Atoi(bannerIDStr)
 	if err != nil {
 		log.Error("bannerID is not a number", sl.Err(err))
-		http.Error(w, "bannerID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	if limit < 0 || limit > 100 {
-		log.Error("limit is out of range", sl.Err(err))
-		http.Error(w, "limit is out of range", http.StatusBadRequest)
+		log.Error("limit is out of range")
+		errorwriter.WriteError(w, "limit is out of range", http.StatusBadRequest)
 		return
 	}
 
 	if offset < 0 {
-		log.Error("offset is out of range", sl.Err(err))
-		http.Error(w, "offset is out of range", http.StatusBadRequest)
+		log.Error("offset is out of range")
+		errorwriter.WriteError(w, "offset is out of range", http.StatusBadRequest)
 		return
 	}
 
 	revisions, err := h.bannerProvider.ListRevisions(r.Context(), bannerID, limit, offset)
 	if err != nil {
 		log.Error("failed to list revisions", sl.Err(err))
-		http.Error(w, "failed to list revisions", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to list revisions", http.StatusInternalServerError)
 		return
 	}
 
 	if len(*revisions) == 0 {
-		w.WriteHeader(http.StatusNoContent)
+		log.Error("no revisions found")
+		errorwriter.WriteError(w, "no revisions found", http.StatusNoContent)
 		return
 	}
 
@@ -306,7 +337,7 @@ func (h *Handler) listRevisions(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(*revisions)
 	if err != nil {
 		log.Error("failed to list revisions", sl.Err(err))
-		http.Error(w, "failed to list revisions", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to list revisions", http.StatusInternalServerError)
 	}
 }
 
@@ -322,21 +353,21 @@ func (h *Handler) listBanners(w http.ResponseWriter, r *http.Request) {
 
 	if tagIDStr == "" || featureIDStr == "" {
 		log.Error("tagID or featureID is not provided")
-		http.Error(w, "tagID or featureID is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "tagID or featureID is not provided", http.StatusBadRequest)
 		return
 	}
 
 	tagID, err := strconv.Atoi(tagIDStr)
 	if err != nil {
 		log.Error("tagID is not a number", sl.Err(err))
-		http.Error(w, "tagID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "tagID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	featureID, err := strconv.Atoi(featureIDStr)
 	if err != nil {
 		log.Error("featureID is not a number", sl.Err(err))
-		http.Error(w, "featureID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "featureID is not a number", http.StatusBadRequest)
 		return
 	}
 
@@ -351,39 +382,39 @@ func (h *Handler) listBanners(w http.ResponseWriter, r *http.Request) {
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil {
 		log.Error("limit is not a number", sl.Err(err))
-		http.Error(w, "limit is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "limit is not a number", http.StatusBadRequest)
 		return
 	}
 
 	offset, err := strconv.Atoi(offsetStr)
 	if err != nil {
 		log.Error("offset is not a number", sl.Err(err))
-		http.Error(w, "offset is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "offset is not a number", http.StatusBadRequest)
 		return
 	}
 
 	if limit < 0 || limit > 100 {
-		log.Error("limit is out of range", sl.Err(err))
-		http.Error(w, "limit is out of range", http.StatusBadRequest)
+		log.Error("limit is out of range")
+		errorwriter.WriteError(w, "limit is out of range", http.StatusBadRequest)
 		return
 	}
 
 	if offset < 0 {
-		log.Error("offset is out of range", sl.Err(err))
-		http.Error(w, "offset is out of range", http.StatusBadRequest)
+		log.Error("offset is out of range")
+		errorwriter.WriteError(w, "offset is out of range", http.StatusBadRequest)
 		return
 	}
 
 	banners, err := h.bannerProvider.ListBanners(r.Context(), featureID, tagID, limit, offset)
 	if err != nil {
 		log.Error("failed to list banners", sl.Err(err))
-		http.Error(w, "failed to list banners", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to list banners", http.StatusInternalServerError)
 		return
 	}
 
 	fmt.Println(len(*banners))
 	if len(*banners) == 0 {
-		http.Error(w, "no banners found", http.StatusNoContent)
+		errorwriter.WriteError(w, "no banners found", http.StatusNoContent)
 		w.Write([]byte("no banners found"))
 		return
 	}
@@ -394,7 +425,7 @@ func (h *Handler) listBanners(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(*banners)
 	if err != nil {
 		log.Error("failed to list banners", sl.Err(err))
-		http.Error(w, "failed to list banners", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to list banners", http.StatusInternalServerError)
 	}
 }
 
@@ -407,14 +438,14 @@ func (h *Handler) patchBanner(w http.ResponseWriter, r *http.Request) {
 
 	if bannerIDStr == "" {
 		log.Error("bannerID  is not provided")
-		http.Error(w, "bannerID  is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID  is not provided", http.StatusBadRequest)
 		return
 	}
 
 	bannerID, err := strconv.Atoi(bannerIDStr)
 	if err != nil {
 		log.Error("bannerID is not a number", sl.Err(err))
-		http.Error(w, "bannerID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID is not a number", http.StatusBadRequest)
 		return
 	}
 
@@ -422,12 +453,12 @@ func (h *Handler) patchBanner(w http.ResponseWriter, r *http.Request) {
 	err = json.NewDecoder(r.Body).Decode(banner)
 	if err != nil {
 		log.Error("failed to decode request body", sl.Err(err))
-		http.Error(w, "failed to decode request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to decode request", http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, io.EOF) {
 		log.Error("request body is empty", sl.Err(err))
-		http.Error(w, "empty request", http.StatusBadRequest)
+		errorwriter.WriteError(w, "empty request", http.StatusBadRequest)
 		return
 	}
 
@@ -440,7 +471,7 @@ func (h *Handler) patchBanner(w http.ResponseWriter, r *http.Request) {
 	err = h.bannerProvider.PatchBanner(r.Context(), banner)
 	if err != nil {
 		log.Error("failed to patch banner", sl.Err(err))
-		http.Error(w, "failed to patch banner", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to patch banner", http.StatusBadRequest)
 		return
 	}
 
@@ -449,7 +480,7 @@ func (h *Handler) patchBanner(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(fmt.Sprintf("patched banner: %v", bannerID)))
 	if err != nil {
 		log.Error("failed to patch a banner", sl.Err(err))
-		http.Error(w, "failed to patch a banner", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to patch a banner", http.StatusInternalServerError)
 	}
 }
 
@@ -462,21 +493,21 @@ func (h *Handler) deleteBanner(w http.ResponseWriter, r *http.Request) {
 
 	if bannerIDStr == "" {
 		log.Error("bannerID  is not provided")
-		http.Error(w, "bannerID  is not provided", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID  is not provided", http.StatusBadRequest)
 		return
 	}
 
 	bannerID, err := strconv.Atoi(bannerIDStr)
 	if err != nil {
 		log.Error("bannerID is not a number", sl.Err(err))
-		http.Error(w, "bannerID is not a number", http.StatusBadRequest)
+		errorwriter.WriteError(w, "bannerID is not a number", http.StatusBadRequest)
 		return
 	}
 
 	err = h.bannerProvider.DeleteBanner(r.Context(), bannerID)
 	if err != nil {
 		log.Error("failed to delete banner", sl.Err(err))
-		http.Error(w, "failed to delete banner", http.StatusBadRequest)
+		errorwriter.WriteError(w, "failed to delete banner", http.StatusBadRequest)
 		return
 	}
 
@@ -485,7 +516,7 @@ func (h *Handler) deleteBanner(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(fmt.Sprintf("deleted banner: %v", bannerID)))
 	if err != nil {
 		log.Error("failed to delete banner", sl.Err(err))
-		http.Error(w, "failed to delete banner", http.StatusInternalServerError)
+		errorwriter.WriteError(w, "failed to delete banner", http.StatusInternalServerError)
 	}
 }
 
@@ -500,28 +531,28 @@ func (h *Handler) deleteBannerFeatureTag(deleteCtx context.Context) http.Handler
 
 		if tagIDStr == "" || featureIDStr == "" {
 			log.Error("tagID or featureID is not provided")
-			http.Error(w, "tagID or featureID is not provided", http.StatusBadRequest)
+			errorwriter.WriteError(w, "tagID or featureID is not provided", http.StatusBadRequest)
 			return
 		}
 
 		tagID, err := strconv.Atoi(tagIDStr)
 		if err != nil {
 			log.Error("tagID is not a number", sl.Err(err))
-			http.Error(w, "tagID is not a number", http.StatusBadRequest)
+			errorwriter.WriteError(w, "tagID is not a number", http.StatusBadRequest)
 			return
 		}
 
 		featureID, err := strconv.Atoi(featureIDStr)
 		if err != nil {
 			log.Error("featureID is not a number", sl.Err(err))
-			http.Error(w, "featureID is not a number", http.StatusBadRequest)
+			errorwriter.WriteError(w, "featureID is not a number", http.StatusBadRequest)
 			return
 		}
 
 		err = h.bannerProvider.DeleteUserBannerByFeatureTag(deleteCtx, tagID, featureID)
 		if err != nil {
 			log.Error("failed to delete banner", sl.Err(err))
-			http.Error(w, "failed to delete banner", http.StatusBadRequest)
+			errorwriter.WriteError(w, "failed to delete banner", http.StatusBadRequest)
 			return
 		}
 
@@ -530,7 +561,7 @@ func (h *Handler) deleteBannerFeatureTag(deleteCtx context.Context) http.Handler
 		_, err = w.Write([]byte(fmt.Sprintf("deleted banner with featureID: %d, tagID: %d, OR NOT)))", featureID, tagID)))
 		if err != nil {
 			log.Error("failed to delete banner", sl.Err(err))
-			http.Error(w, "failed to delete banner", http.StatusInternalServerError)
+			errorwriter.WriteError(w, "failed to delete banner", http.StatusInternalServerError)
 		}
 
 	}
