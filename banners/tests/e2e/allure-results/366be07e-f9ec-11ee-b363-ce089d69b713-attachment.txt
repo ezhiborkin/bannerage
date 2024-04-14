@@ -1,0 +1,2 @@
+header Content-Type2 is not present
+Called from: /Users/evgeny/avito/banners/tests/e2e/e2e_test.go:191

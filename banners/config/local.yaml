@@ -1,0 +1,11 @@
+env: "local"
+data_source_name: postgres://postgres:qwerty@db:5432/postgres
+http_server:
+  address: "8080"
+  timeout: 4s
+  idle_timeout: 8s
+cache_storage:
+  address: "6379"
+  interval: 10s
+  timeout: 5s
+  retries: 5
