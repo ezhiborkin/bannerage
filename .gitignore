@@ -1,4 +1,4 @@
 .idea
 sql/kek.sql
 postgres-data/
-tests/e2e/allure-tests
+banners/tests/e2e/allure-tests
